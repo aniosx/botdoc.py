@@ -201,10 +201,8 @@ def forward_message(update: Update, context: CallbackContext) -> None:
         )
         return
     
-    # Créer un lien Telegram vers l'utilisateur
     sender_info = f"<a href='tg://user?id={user.id}'>{user.first_name}</a>\n"
     
-    # Créer des boutons inline pour répondre et bloquer
     reply_keyboard = InlineKeyboardMarkup([
         [
             InlineKeyboardButton("Répondre", callback_data=f"reply_{user.id}_{message.message_id}"),
@@ -212,7 +210,6 @@ def forward_message(update: Update, context: CallbackContext) -> None:
         ]
     ])
     
-    # Transmettre différents types de messages
     if message.text:
         forwarded = context.bot.send_message(
             chat_id=OWNER_ID,
@@ -337,14 +334,14 @@ def handle_reply_button(update: Update, context: CallbackContext) -> None:
     
     if len(data) >= 3 and data[0] == "reply":
         user_id = int(data[1])
+        context.user_data["waiting_for_reply"] = True
         context.user_data["reply_to"] = user_id
         context.user_data["original_message"] = query.message.message_id
         
         query.edit_message_reply_markup(None)
         context.bot.send_message(
             chat_id=OWNER_ID,
-            text="Envoyez votre réponse maintenant",
-            reply_to_message_id=query.message.message_id
+            text="Envoyez votre réponse maintenant"
         )
     
     elif len(data) >= 2 and data[0] == "block":
@@ -374,81 +371,88 @@ def handle_owner_reply(update: Update, context: CallbackContext) -> None:
     if user.id != OWNER_ID:
         return
     
-    if message.reply_to_message:
-        replied_msg_id = str(message.reply_to_message.message_id)
+    if context.user_data.get("waiting_for_reply") and "reply_to" in context.user_data:
+        target_user_id = context.user_data["reply_to"]
         
-        if replied_msg_id in message_registry:
-            target_user_id = message_registry[replied_msg_id]["user_id"]
-            
-            if target_user_id in blocked_users:
+        if target_user_id in blocked_users:
+            context.bot.send_message(
+                chat_id=OWNER_ID,
+                text=f"Cet utilisateur (ID: {target_user_id}) est bloqué. Débloquez-le avec /unblock {target_user_id} pour lui envoyer des messages."
+            )
+            # Clear the waiting state
+            context.user_data.pop("waiting_for_reply", None)
+            context.user_data.pop("reply_to", None)
+            context.user_data.pop("original_message", None)
+            return
+        
+        try:
+            if message.text:
                 context.bot.send_message(
-                    chat_id=OWNER_ID,
-                    text=f"Cet utilisateur (ID: {target_user_id}) est bloqué. Débloquez-le avec /unblock {target_user_id} pour lui envoyer des messages.",
-                    reply_to_message_id=message.message_id
+                    chat_id=target_user_id,
+                    text=f"Réponse du propriétaire: {message.text}"
                 )
-                return
-            
-            try:
-                if message.text:
-                    context.bot.send_message(
-                        chat_id=target_user_id,
-                        text=f"Réponse du propriétaire: {message.text}"
-                    )
-                elif message.photo:
-                    photo = message.photo[-1]
-                    caption = message.caption or ""
-                    context.bot.send_photo(
-                        chat_id=target_user_id,
-                        photo=photo.file_id,
-                        caption=f"Réponse du propriétaire: {caption}"
-                    )
-                elif message.document:
-                    context.bot.send_document(
-                        chat_id=target_user_id,
-                        document=message.document.file_id,
-                        caption=f"Réponse du propriétaire: {message.caption or ''}"
-                    )
-                elif message.video:
-                    context.bot.send_video(
-                        chat_id=target_user_id,
-                        video=message.video.file_id,
-                        caption=f"Réponse du propriétaire: {message.caption or ''}"
-                    )
-                elif message.voice:
-                    context.bot.send_voice(
-                        chat_id=target_user_id,
-                        voice=message.voice.file_id,
-                        caption="Réponse vocale du propriétaire"
-                    )
-                elif message.audio:
-                    context.bot.send_audio(
-                        chat_id=target_user_id,
-                        audio=message.audio.file_id,
-                        caption=f"Réponse audio du propriétaire: {message.caption or ''}"
-                    )
-                elif message.sticker:
-                    context.bot.send_sticker(
-                        chat_id=target_user_id,
-                        sticker=message.sticker.file_id
-                    )
-                else:
-                    context.bot.send_message(
-                        chat_id=target_user_id,
-                        text="Le propriétaire a répondu avec un type de message non pris en charge."
-                    )
-                
+            elif message.photo:
+                photo = message.photo[-1]
+                caption = message.caption or ""
+                context.bot.send_photo(
+                    chat_id=target_user_id,
+                    photo=photo.file_id,
+                    caption=f"Réponse du propriétaire: {caption}"
+                )
+            elif message.document:
+                context.bot.send_document(
+                    chat_id=target_user_id,
+                    document=message.document.file_id,
+                    caption=f"Réponse du propriétaire: {message.caption or ''}"
+                )
+            elif message.video:
+                context.bot.send_video(
+                    chat_id=target_user_id,
+                    video=message.video.file_id,
+                    caption=f"Réponse du propriétaire: {message.caption or ''}"
+                )
+            elif message.voice:
+                context.bot.send_voice(
+                    chat_id=target_user_id,
+                    voice=message.voice.file_id,
+                    caption="Réponse vocale du propriétaire"
+                )
+            elif message.audio:
+                context.bot.send_audio(
+                    chat_id=target_user_id,
+                    audio=message.audio.file_id,
+                    caption=f"Réponse audio du propriétaire: {message.caption or ''}"
+                )
+            elif message.sticker:
+                context.bot.send_sticker(
+                    chat_id=target_user_id,
+                    sticker=message.sticker.file_id
+                )
+            else:
                 context.bot.send_message(
-                    chat_id=OWNER_ID,
-                    text=f"Votre réponse a été envoyée à l'utilisateur ID: {target_user_id}",
-                    reply_to_message_id=message.message_id
+                    chat_id=target_user_id,
+                    text="Le propriétaire a répondu avec un type de message non pris en charge."
                 )
             
-            except Exception as e:
-                context.bot.send_message(
-                    chat_id=OWNER_ID,
-                    text=f"Erreur lors de l'envoi de la réponse: {str(e)}",
-                    reply_to_message_id=message.message_id
-                )
+            context.bot.send_message(
+                chat_id=OWNER_ID,
+                text=f"Votre réponse a été envoyée à l'utilisateur ID: {target_user_id}"
+            )
+            
+            # Clear the waiting state
+            context.user_data.pop("waiting_for_reply", None)
+            context.user_data.pop("reply_to", None)
+            context.user_data.pop("original_message", None)
+        
+        except Exception as e:
+            context.bot.send_message(
+                chat_id=OWNER_ID,
+                text=f"Erreur lors de l'envoi de la réponse: {str(e)}"
+            )
+            # Clear the waiting state on error
+            context.user_data.pop("waiting_for_reply", None)
+            context.user_data.pop("reply_to", None)
+            context.user_data.pop("original_message", None)
 
 def error_handler(update: Update, context: CallbackContext) -> None:
     """Gère les erreurs rencontrées par le dispatcher."""
@@ -476,7 +480,7 @@ def main() -> None:
     dispatcher.add_handler(CommandHandler("blocklist", blocklist))
     dispatcher.add_handler(CallbackQueryHandler(handle_reply_button))
     dispatcher.add_handler(MessageHandler(
-        Filters.reply & Filters.user(OWNER_ID),
+        Filters.user(OWNER_ID) & (Filters.text | Filters.photo | Filters.document | Filters.video | Filters.voice | Filters.audio | Filters.sticker),
         handle_owner_reply
     ))
     dispatcher.add_handler(MessageHandler(

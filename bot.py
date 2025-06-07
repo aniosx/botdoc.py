@@ -31,7 +31,12 @@ load_dotenv()
 TOKEN = os.getenv('TELEGRAM_TOKEN')
 if not TOKEN:
     raise ValueError("Le token TELEGRAM_TOKEN est manquant dans les variables d'environnement.")
-OWNER_ID = int(os.getenv('OWNER_ID', '144262846'))
+
+OWNER_ID = os.getenv('OWNER_ID')
+if not OWNER_ID or not OWNER_ID.isdigit():
+    raise ValueError("OWNER_ID est manquant ou non valide dans les variables d'environnement.")
+OWNER_ID = int(OWNER_ID)
+
 PORT = int(os.environ.get('PORT', 8080))
 
 # Dictionnaire pour stocker les messages et leurs expéditeurs
@@ -87,9 +92,14 @@ def start(update: Update, context: CallbackContext) -> None:
     )
     
     if user.id != OWNER_ID:
+        # إرسال اسم المستخدم الأول والأخير ورابط حسابه فقط
+        full_name = f"{user.first_name} {user.last_name or ''}".strip()
+        username = f"@{user.username}" if user.username else full_name
+        user_link = f"<a href='tg://user?id={user.id}'>{username}</a>"
         context.bot.send_message(
             chat_id=OWNER_ID,
-            text=f"Nouvel utilisateur: {user.first_name} (@{user.username or 'Sans username'}) [ID: {user.id}] a démarré le bot."
+            text=f"Nouvel utilisateur: {user_link} a démarré le bot.",
+            parse_mode=ParseMode.HTML
         )
 
 def help_command(update: Update, context: CallbackContext) -> None:
@@ -201,7 +211,9 @@ def forward_message(update: Update, context: CallbackContext) -> None:
         )
         return
     
-    sender_info = f"<a href='tg://user?id={user.id}'>{user.first_name}</a>\n"
+    full_name = f"{user.first_name} {user.last_name or ''}".strip()
+    username = f"@{user.username}" if user.username else full_name
+    sender_info = f"<a href='tg://user?id={user.id}'>{username}</a>\n"
     
     reply_keyboard = InlineKeyboardMarkup([
         [
